@@ -17,10 +17,8 @@ bot = AsyncTeleBot(token)
 users_playlists = defaultdict(set)
 playlists_tracks = {}
 
-
 client = Client()
 
-print("ready!")
 def extract_arg(arg):
     return arg.split()[1:]
 
