@@ -1,14 +1,16 @@
 import asyncio
 from hashlib import new
 import os
-import telebot
 import logging
 from collections import defaultdict
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
 from yandex_music import ClientAsync
 from yandex_music import Playlist
+import aiosqlite
 import sqlite3
+import signal
+import sys
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -21,6 +23,13 @@ playlists_users = defaultdict(set)
 playlists_tracks = {}
 
 client = ClientAsync()
+
+conn = sqlite3.connect('PlaylistUpdateNotifier.db')
+
+# Обработчик прерываний
+def signal_handler(sig, frame):
+    conn.close()
+    sys.exit(0)
 
 # Возвращает аргумент из сообщения от телеграм-бота (/add_playlist <url> -- вернёт url)
 def extract_arg(arg):
@@ -127,7 +136,9 @@ async def main():
     await client.init() 
     await asyncio.gather(bot.infinity_polling(), polling())
 
+# Закрыть sql-соединение если экстренно прерываемся
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
+# Запуск основого (за)лупа
 asyncio.run(main())
-
-
