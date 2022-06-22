@@ -8,6 +8,7 @@ from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
 from yandex_music import ClientAsync
 from yandex_music import Playlist
+import sqlite3
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -52,7 +53,10 @@ def check_playlist_update(playlist_name : str, playlist : Playlist):
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
     playlist_name = "/".join(extract_arg(message.text))
-    reply = ""
+    reply = "Дайте минутку, сейчас сделаем 👻"
+    
+    await bot.reply_to(message, reply)
+
     if playlist_name is None:
         reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
     else:
@@ -69,7 +73,7 @@ async def add_playlist(message):
 
         logging.info(f"added playlists_tracks: {playlist_name}. Stored tracks count is {playlists_tracks[playlist_name]}")
 
-        reply = "Плейлист успешно добавлен в отслеживаемые!"
+        reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
 
     await bot.reply_to(message, reply)
 
@@ -79,9 +83,9 @@ async def add_playlist(message):
 async def show_playlists(message):
     logging.info(f"showing {message.chat.id}")
     if message.chat.id in users_playlists.keys():
-        await bot.reply_to(message, ' ,'.join(users_playlists[message.chat.id]))
+        await bot.reply_to(message, '📌' + '📌\n'.join(users_playlists[message.chat.id]))
     else:
-        await bot.reply_to(message, "Вы не отслеживаете ни один плейлист!")
+        await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
             
 
 # Обработка '/start' и '/help'
@@ -92,7 +96,8 @@ async def send_welcome(message):
 Когда в него добавится какой-то трек, в этот чат придёт \
 ссылка на него!
 Команда \"/show\" покажет текущие отслеживаемые плейлисты.
-Остальные команды проигнорируются.""")
+Остальные команды проигнорируются.
+Подписывайтесь на боярхив vk.com/boyarchive""")
 
 # Каждые 5 секунд проверяет все плейлисты, которые кем-то отслеживаются, 
 # и рассылает сообщения об обновлениях, если такие имеются
@@ -107,7 +112,7 @@ async def polling():
             if check_playlist_update(playlist_name, playlist) != 0:
 
                 last_added_track_url = get_last_added_track_url(playlist)
-                message = f"Новый трек в плейлисте \"{playlist.title}\", вот ссылка на добавленую песню: {last_added_track_url}!"
+                message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track_url}"
 
                 logging.info(message)
 
