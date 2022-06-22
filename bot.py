@@ -6,8 +6,8 @@ import logging
 from collections import defaultdict
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
-from yandex_music import Client
 from yandex_music import ClientAsync
+from yandex_music import Playlist
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()  # take environment variables from .env.
@@ -24,14 +24,22 @@ client = ClientAsync()
 def extract_arg(arg):
     return arg.split()[1:]
 
+
+def get_last_added_track_url(playlist):
+    track = playlist.tracks[-1].track
+    
+    album_id = track.track_id.split(':')[1]
+    track_id = track.track_id.split(':')[0]
+    
+    last_added_track_url = f"https://music.yandex.ru/album/{album_id}/track/{track_id}"
+    
+    return last_added_track_url
+
 # Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
-async def check_playlist_update(playlist_name):
-    playlist_id = playlist_name.split('/')[-1]
-    user = playlist_name.split('/')[-3]
+def check_playlist_update(playlist_name, playlist):
 
     old_track_count = playlists_tracks[playlist_name]
 
-    playlist = await client.users_playlists(playlist_id, user)
     logging.debug(f"for playlist {playlist_name} new track_count = {playlist.track_count}, stored = {old_track_count}")
     playlists_tracks[playlist_name] = playlist.track_count
     return playlist.track_count - old_track_count
@@ -51,7 +59,7 @@ async def add_playlist(message):
     playlist = await client.users_playlists(playlist_id, user)
     playlists_tracks[playlist_name] = playlist.track_count
 
-    logging.info(f"added playlists_tracks: {playlist_name} : {playlists_tracks[playlist_name]}")
+    logging.info(f"added playlists_tracks: {playlist_name}. Stored tracks count is {playlists_tracks[playlist_name]}")
 
     await bot.reply_to(message, "success!")
 
@@ -72,12 +80,23 @@ I am here to echo your kind words back to you. Just say anything nice and I'll s
 
 async def polling():
     while True:
-        for playlist in playlists_tracks:
-            if await check_playlist_update(playlist) != 0:
-                logging.info(f"found an update in playlist {playlist}")
-                for user in playlists_users[playlist]:        
-                    logging.info(f"trying to send update message to user {user}") 
-                    await bot.send_message(user, f"there is an update in playlist {playlist}!")
+        for playlist_name in playlists_tracks:
+            playlist_id = playlist_name.split('/')[-1]
+            user = playlist_name.split('/')[-3]
+
+            playlist = await client.users_playlists(playlist_id, user)
+            
+            if check_playlist_update(playlist_name, playlist) != 0:
+
+                last_added_track_url = get_last_added_track_url(playlist)
+                message = f"Новый трек в плейлисте \"{playlist.title}\", вот ссылка на добавленую песню: {last_added_track_url}!"
+
+                logging.info(message)
+
+                for user in playlists_users[playlist_name]:        
+                    logging.info(f"trying to send message: <{message}> to user {user}")
+                    await bot.send_message(user, message)
+
         await asyncio.sleep(5)
 
 
