@@ -10,7 +10,7 @@ from yandex_music import ClientAsync
 from yandex_music import Playlist
 
 logging.basicConfig(level=logging.INFO)
-load_dotenv()  # take environment variables from .env.
+load_dotenv()
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = AsyncTeleBot(token)
@@ -37,6 +37,7 @@ def get_last_added_track_url(playlist : Playlist):
     
     return last_added_track_url
 
+
 # Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
 def check_playlist_update(playlist_name : str, playlist : Playlist):
 
@@ -45,6 +46,7 @@ def check_playlist_update(playlist_name : str, playlist : Playlist):
     logging.debug(f"for playlist {playlist_name} new track_count = {playlist.track_count}, stored = {old_track_count}")
     playlists_tracks[playlist_name] = playlist.track_count
     return playlist.track_count - old_track_count
+
 
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
@@ -71,6 +73,7 @@ async def add_playlist(message):
 
     await bot.reply_to(message, reply)
 
+
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
 @bot.message_handler(commands=['show'])
 async def show_playlists(message):
@@ -81,7 +84,7 @@ async def show_playlists(message):
         await bot.reply_to(message, "Вы не отслеживаете ни один плейлист!")
             
 
-# Handle '/start' and '/help'
+# Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     await bot.reply_to(message, """\
@@ -91,8 +94,8 @@ async def send_welcome(message):
 Команда \"/show\" покажет текущие отслеживаемые плейлисты.
 Остальные команды проигнорируются.""")
 
-
-
+# Каждые 5 секунд проверяет все плейлисты, которые кем-то отслеживаются, 
+# и рассылает сообщения об обновлениях, если такие имеются
 async def polling():
     while True:
         for playlist_name in playlists_tracks:
