@@ -103,7 +103,7 @@ async def add_playlist(message):
 async def show_playlists(message):
     logging.info(f"showing {message.chat.id}")
     reply = ""
-
+    # TODO: SQL injection 
     cursor = await bot.db.execute(f"SELECT * FROM Subscription WHERE User_id = {message.chat.id}")
     rows = await cursor.fetchall()
     await cursor.close()
@@ -123,6 +123,7 @@ async def show_playlists(message):
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     try:
+        # TODO: SQL injection 
         await bot.db.execute(f"INSERT INTO User VALUES ({message.chat.id})")
         logging.info(f"Added user with ID {message.chat.id}")
     except DatabaseError:
