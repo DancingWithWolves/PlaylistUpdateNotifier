@@ -21,11 +21,13 @@ playlists_tracks = {}
 
 client = ClientAsync()
 
+# Возвращает аргумент из сообщения от телеграм-бота (/add_playlist <url> -- вернёт url)
 def extract_arg(arg):
     return arg.split()[1:]
 
 
-def get_last_added_track_url(playlist):
+# Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
+def get_last_added_track_url(playlist : Playlist):
     track = playlist.tracks[-1].track
     
     album_id = track.track_id.split(':')[1]
@@ -36,7 +38,7 @@ def get_last_added_track_url(playlist):
     return last_added_track_url
 
 # Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
-def check_playlist_update(playlist_name, playlist):
+def check_playlist_update(playlist_name : str, playlist : Playlist):
 
     old_track_count = playlists_tracks[playlist_name]
 
@@ -44,37 +46,50 @@ def check_playlist_update(playlist_name, playlist):
     playlists_tracks[playlist_name] = playlist.track_count
     return playlist.track_count - old_track_count
 
+# Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
     playlist_name = "/".join(extract_arg(message.text))
+    reply = ""
+    if playlist_name is None:
+        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
+    else:
+        playlist_id = message.text.split('/')[-1]
+        user = message.text.split('/')[-3]
 
-    playlist_id = message.text.split('/')[-1]
-    user = message.text.split('/')[-3]
+        logging.info(f"adding {message.chat.id}: {playlist_name}")
+        
+        users_playlists[message.chat.id].add(playlist_name)
+        playlists_users[playlist_name].add(message.chat.id)
 
-    logging.info(f"adding {message.chat.id}: {playlist_name}")
-    
-    users_playlists[message.chat.id].add(playlist_name)
-    playlists_users[playlist_name].add(message.chat.id)
+        playlist = await client.users_playlists(playlist_id, user)
+        playlists_tracks[playlist_name] = playlist.track_count
 
-    playlist = await client.users_playlists(playlist_id, user)
-    playlists_tracks[playlist_name] = playlist.track_count
+        logging.info(f"added playlists_tracks: {playlist_name}. Stored tracks count is {playlists_tracks[playlist_name]}")
 
-    logging.info(f"added playlists_tracks: {playlist_name}. Stored tracks count is {playlists_tracks[playlist_name]}")
+        reply = "Плейлист успешно добавлен в отслеживаемые!"
 
-    await bot.reply_to(message, "success!")
+    await bot.reply_to(message, reply)
 
+# Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
 @bot.message_handler(commands=['show'])
 async def show_playlists(message):
     logging.info(f"showing {message.chat.id}")
-    await bot.reply_to(message, str(users_playlists[message.chat.id]))
+    if message.chat.id in users_playlists.keys():
+        await bot.reply_to(message, ' ,'.join(users_playlists[message.chat.id]))
+    else:
+        await bot.reply_to(message, "Вы не отслеживаете ни один плейлист!")
+            
 
 # Handle '/start' and '/help'
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     await bot.reply_to(message, """\
-Hi there, I am EchoBot.
-I am here to echo your kind words back to you. Just say anything nice and I'll say the exact same thing to you!\
-""")
+Используй команду \"/add_playlist <URL плейлиста>\", чтобы отслеживать изменения в плейлисте. \
+Когда в него добавится какой-то трек, в этот чат придёт \
+ссылка на него!
+Команда \"/show\" покажет текущие отслеживаемые плейлисты.
+Остальные команды проигнорируются.""")
 
 
 
@@ -94,7 +109,7 @@ async def polling():
                 logging.info(message)
 
                 for user in playlists_users[playlist_name]:        
-                    logging.info(f"trying to send message: <{message}> to user {user}")
+                    logging.info(f"Sending a message: <{message}> to user {user}")
                     await bot.send_message(user, message)
 
         await asyncio.sleep(5)
