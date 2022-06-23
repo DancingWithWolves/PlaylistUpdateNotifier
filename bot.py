@@ -25,7 +25,6 @@ def extract_arg(arg):
     else:
         raise Exception
 
-
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
 def get_last_added_track_url(playlist : Playlist):
     track = playlist.tracks[-1].track
@@ -42,7 +41,7 @@ def get_last_added_track_url(playlist : Playlist):
 async def add_playlist(message):
     try:
         playlist_name = "/".join(extract_arg(message.text))
-        # Начитка нужных для апи ямузыки полей
+        # Начитка нужных для апи ямузыки полей, если не получается, то шляпа какая-то
         playlist_id = message.text.split('/')[-1]
         user = message.text.split('/')[-3]
     except Exception as error:
@@ -71,7 +70,7 @@ async def add_playlist(message):
         except YandexMusicError as error:
             reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
             logging.error(error)
-            logging.info(f"DB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
+            logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
             await bot.reply_to(message, reply)
 
             return
