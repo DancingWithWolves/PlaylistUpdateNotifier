@@ -45,7 +45,8 @@ async def add_playlist(message):
         playlist_id = message.text.split('/')[-1]
         user = message.text.split('/')[-3]
     except Exception as error:
-        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
+        logging.info("User {message.chat.id} entered non-valid URL: {message.text}")
+        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\" 🐷"
         try:
             await bot.reply_to(message, reply)
         except Exception as error:
@@ -59,47 +60,43 @@ async def add_playlist(message):
         logging.error(error)
         logging.error(f"WEB: could not send message to user {message.chat.id}")
 
-    if playlist_name is None:
-        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
-    else:
+    logging.info(f"adding {message.chat.id}: {playlist_name}")
+    # Ямузыка апи
+    try:
+        playlist = await client.users_playlists(playlist_id, user)
+    except YandexMusicError as error:
+        reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
+        logging.error(error)
+        logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
+        await bot.reply_to(message, reply)
 
-        logging.info(f"adding {message.chat.id}: {playlist_name}")
-        # Ямузыка апи
-        try:
-            playlist = await client.users_playlists(playlist_id, user)
-        except YandexMusicError as error:
-            reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
-            logging.error(error)
-            logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
-            await bot.reply_to(message, reply)
+        return
 
-            return
+    # Добавление в БД
+    # 1) плейлист:
+    try:
+        last_added_track = get_last_added_track_url(playlist)
+        query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
+        cursor = await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
+        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")       
+        await bot.db.commit()
+        await cursor.close()
+    except DatabaseError as error:
+        logging.error(error)
+        logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
+        
+    # 2) подписка пользователя на этот плейлист:
+    try:
+        query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
+        cursor = await bot.db.execute(query, (message.chat.id, playlist_name))
+        logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
+        await bot.db.commit()
+        await cursor.close()
+    except DatabaseError as error:
+        logging.error(error)
+        logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
 
-        # Добавление в БД
-        # 1) плейлист:
-        try:
-            last_added_track = get_last_added_track_url(playlist)
-            query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
-            cursor = await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
-            logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")       
-            await bot.db.commit()
-            await cursor.close()
-        except DatabaseError as error:
-            logging.error(error)
-            logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
-           
-        # 2) подписка пользователя на этот плейлист:
-        try:
-            query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
-            cursor = await bot.db.execute(query, (message.chat.id, playlist_name))
-            logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
-            await bot.db.commit()
-            await cursor.close()
-        except DatabaseError as error:
-            logging.error(error)
-            logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
-
-        reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
+    reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
     try:
         await bot.reply_to(message, reply)
     except Exception as error:
