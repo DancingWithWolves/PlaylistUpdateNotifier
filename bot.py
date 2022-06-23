@@ -132,7 +132,7 @@ async def add_playlist(message):
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
 @bot.message_handler(commands=['show'])
 async def show_playlists(message):
-    logging.info(f"showing {message.chat.id}")
+    logging.info(f"Showing subscriptions to user {message.chat.id}")
     
     query = "SELECT * FROM Subscription WHERE User_id = ?"
     cursor = await bot.db.execute(query, (message.chat.id,))
