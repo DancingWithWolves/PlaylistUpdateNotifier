@@ -61,6 +61,7 @@ async def check_playlist_update(playlist_name : str, playlist : Playlist):
             query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
             await bot.db.execute(query, (last_added_track, playlist_name))
             await bot.db.commit()
+            logging.info(f"Found an update in playlist {playlist_name}; \n LastAddedTrack was {db_last_added_track}, now {last_added_track}")
         except DatabaseError as error:
             logging.error(error)
         return True
@@ -173,22 +174,60 @@ async def send_welcome(message):
 # и рассылает сообщения об обновлениях, если такие имеются
 async def polling():
     while True:
-        for playlist_name in playlists_tracks:
+        # Начитаем все плейлисты, на которые кто-то подписан
+        query = "SELECT * FROM Playlist"
+        cursor = await bot.db.execute(query)
+        rows = await cursor.fetchall()
+        await cursor.close()
+        # Для каждого плейлиста:
+        for (playlist_name, last_added_track_db, snapshot) in rows:
+            # Начитаем идентификатор для апишки
             playlist_id = playlist_name.split('/')[-1] 
             user = playlist_name.split('/')[-3]
-
-            playlist = await client.users_playlists(playlist_id, user)
+            # Дёрнем апишку
+            try:
+                playlist = await client.users_playlists(playlist_id, user)
+            except YandexMusicError as error:
+                logging.error(error)
+                logging.info(f"DB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
+                continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист :)
             
-            if await check_playlist_update(playlist_name, playlist):
+            last_added_track = await get_last_added_track_url(playlist)
 
-                last_added_track_url = await get_last_added_track_url(playlist)
-                message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track_url}"
-
+            if last_added_track_db != last_added_track:
+                message = f"🎼 Новый трек в плейлисте \"{playlist_name}\", вот ссылка:\n{last_added_track}"
                 logging.info(message)
+                # Начитаем подписчиков плейлиста
+                try:
+                    query = "SELECT User_id FROM Subscription where Playlist_id = ?"
+                    cursor = await bot.db.execute(query, (playlist_name,))
+                    rows = await cursor.fetchall()
+                    await cursor.close()
+                except DatabaseError as error:
+                    logging.error(error)
+                    logging.error(f"Could not read Users subscriped to {playlist_name} from db")
+                    continue
 
-                for user in playlists_users[playlist_name]:        
+                # Оповестим подписанных пользователей
+                for (user, playlist) in rows:
                     logging.info(f"Sending a message: <{message}> to user {user}")
-                    await bot.send_message(user, message)
+                    try:
+                        await bot.send_message(user, message)
+                    except Exception as error:
+                        logging.error(error)
+                        logging.error(f"Could not send message to user {user}")
+                        continue
+
+                # Обновим БД:
+                try:
+                    query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
+                    await bot.db.execute(query, (last_added_track, playlist_name))
+                    await bot.db.commit()
+                    logging.info(f"Found an update in playlist {playlist_name}; \n LastAddedTrack was {last_added_track_db}, now {last_added_track}")
+                except DatabaseError as error:
+                    logging.error(error)
+                    logging.error(f"Could not update playlist {playlist_name} in db")
+
 
         await asyncio.sleep(5)
 
