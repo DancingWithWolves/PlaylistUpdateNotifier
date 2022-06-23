@@ -39,38 +39,6 @@ def get_last_added_track_url(playlist : Playlist):
     
     return last_added_track_url
 
-
-# Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
-async def check_playlist_update(playlist_name : str, playlist : Playlist):
-    last_added_track = get_last_added_track_url(playlist)
-    try:
-        query = "SELECT LastAddedTrack FROM Playlist WHERE Title = ?"
-        cursor = await bot.db.execute(query, (playlist_name,))
-        db_last_added_tracks = await cursor.fetchall()
-        await cursor.close()
-    except DatabaseError as error:
-        logging.error(error)
-
-    if len(db_last_added_tracks) != 1:
-        logging.error(f"There is no playlist {playlist_name} in db!")
-        return False
-
-    db_last_added_track = db_last_added_tracks[0]
-    if db_last_added_track != last_added_track:
-        try:
-            query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
-            await bot.db.execute(query, (last_added_track, playlist_name))
-            await bot.db.commit()
-            logging.info(f"DB: Found an update in playlist {playlist_name}; \n LastAddedTrack was {db_last_added_track}, now {last_added_track}")
-        except DatabaseError as error:
-            logging.error(error)
-            logging.error(f"Could not update Playlist for Title = {playlist_name}")
-        return True
-    return False
-
-
-
-
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
