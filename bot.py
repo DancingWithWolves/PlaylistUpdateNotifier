@@ -1,5 +1,4 @@
 import asyncio
-from hashlib import new
 import os
 import logging
 from collections import defaultdict
@@ -25,7 +24,10 @@ client = ClientAsync()
 
 # Возвращает аргумент из сообщения от телеграм-бота (/add_playlist <url> -- вернёт url)
 def extract_arg(arg):
-    return arg.split()[1:]
+    if len(arg.split()) > 1:
+        return arg.split()[1:]
+    else:
+        raise Exception
 
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
@@ -42,7 +44,19 @@ def get_last_added_track_url(playlist : Playlist):
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
-    playlist_name = "/".join(extract_arg(message.text))
+    try:
+        playlist_name = "/".join(extract_arg(message.text))
+        # Начитка нужных для апи ямузыки полей
+        playlist_id = message.text.split('/')[-1]
+        user = message.text.split('/')[-3]
+    except Exception as error:
+        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
+        try:
+            await bot.reply_to(message, reply)
+        except Exception as error:
+            logging.error(error)
+            logging.error(f"WEB: could not send message to user {message.chat.id}")
+        return
     reply = "Дайте минутку, сейчас сделаем 👻"
     try:
         await bot.reply_to(message, reply)
@@ -53,9 +67,6 @@ async def add_playlist(message):
     if playlist_name is None:
         reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
     else:
-        # Начитка нужных для апи ямузыки полей
-        playlist_id = message.text.split('/')[-1]
-        user = message.text.split('/')[-3]
 
         logging.info(f"adding {message.chat.id}: {playlist_name}")
         # Ямузыка апи
