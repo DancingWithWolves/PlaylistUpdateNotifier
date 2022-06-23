@@ -8,6 +8,7 @@ from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
 from yandex_music import ClientAsync
 from yandex_music import Playlist
+from yandex_music.exceptions import YandexMusicError
 import aiosqlite
 
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +29,7 @@ def extract_arg(arg):
 
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
-def get_last_added_track_url(playlist : Playlist):
+async def get_last_added_track_url(playlist : Playlist):
     track = playlist.tracks[-1].track
     
     album_id = track.track_id.split(':')[1]
@@ -40,13 +41,32 @@ def get_last_added_track_url(playlist : Playlist):
 
 
 # Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
-def check_playlist_update(playlist_name : str, playlist : Playlist):
+async def check_playlist_update(playlist_name : str, playlist : Playlist):
+    last_added_track = await get_last_added_track_url(playlist)
+    try:
+        query = "SELECT LastAddedTrack FROM Playlist WHERE Title = ?"
+        cursor = await bot.db.execute(query, (playlist_name,))
+        db_last_added_tracks = await cursor.fetchall()
+        await cursor.close()
+    except DatabaseError as error:
+        logging.error(error)
 
-    old_track_count = playlists_tracks[playlist_name]
+    if len(db_last_added_tracks) != 1:
+        logging.error(f"There is no playlist {playlist_name} in db!")
+        return False
 
-    logging.debug(f"for playlist {playlist_name} new track_count = {playlist.track_count}, stored = {old_track_count}")
-    playlists_tracks[playlist_name] = playlist.track_count
-    return playlist.track_count - old_track_count
+    db_last_added_track = db_last_added_tracks[0]
+    if db_last_added_track != last_added_track:
+        try:
+            query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
+            await bot.db.execute(query, (last_added_track, playlist_name))
+            await bot.db.commit()
+        except DatabaseError as error:
+            logging.error(error)
+        return True
+    return False
+
+
 
 
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
@@ -66,36 +86,46 @@ async def add_playlist(message):
 
         logging.info(f"adding {message.chat.id}: {playlist_name}")
         # Ямузыка апи
-        playlist = await client.users_playlists(playlist_id, user)
-        playlists_tracks[playlist_name] = playlist.track_count
-        # Локальное добавление
-        users_playlists[message.chat.id].add(playlist_name)
-        playlists_users[playlist_name].add(message.chat.id)
-        
-        logging.info(f"locally added playlists_tracks: {playlist_name}. Stored tracks count is {playlists_tracks[playlist_name]}")
+        try:
+            playlist = await client.users_playlists(playlist_id, user)
+            playlists_tracks[playlist_name] = playlist.track_count
+        except YandexMusicError as error:
+            reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
+            logging.error(error)
+            logging.info(f"DB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
+            await bot.reply_to(message, reply)
+
+            return
+
         # Добавление в БД
         # 1) плейлист:
         try:
-            query = "INSERT INTO Playlist (Title, TrackCount) VALUES (?, ?)"
-            cursor = await bot.db.execute(query, (playlist_name, playlist.track_count))
-            logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", TrackCount = {playlist.track_count}")
+            last_added_track = await get_last_added_track_url(playlist)
+            query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
+            cursor = await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
+            logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")       
+            await bot.db.commit()
+            await cursor.close()
         except DatabaseError as error:
             logging.error(error)
             logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
-        await bot.db.commit()
+        
+            
         # 2) подписка пользователя на этот плейлист:
         try:
             query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
             cursor = await bot.db.execute(query, (message.chat.id, playlist_name))
-            logging.info(f"DB: added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
+            logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
+            await bot.db.commit()
+            await cursor.close()
         except DatabaseError as error:
             logging.error(error)
             logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
-        await bot.db.commit()
 
         reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
 
     await bot.reply_to(message, reply)
+    return
 
 
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
@@ -104,31 +134,32 @@ async def show_playlists(message):
     logging.info(f"showing {message.chat.id}")
     
     query = "SELECT * FROM Subscription WHERE User_id = ?"
-    cursor = await bot.db.execute(query, (message.chat.id))
+    cursor = await bot.db.execute(query, (message.chat.id,))
     rows = await cursor.fetchall()
     await cursor.close()
-    print(type(rows))
+    # logging.info(type(rows))
+
     if len(rows) == 0:
         await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
     else:
-        await bot.reply_to(message, '📌' + '📌\n'.join(rows))
+        playlists_list = []
+        for (playlist, user) in rows:
+            playlists_list.append(playlist)
+        await bot.reply_to(message, "📌" + "📌\n".join(playlists_list))
 
-    # if message.chat.id in users_playlists.keys():
-    #     await bot.reply_to(message, '📌' + '📌\n'.join(users_playlists[message.chat.id]))
-    # else:
-    #     await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
             
 
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     try:
-        query = "INSERT INTO User VALUES (?)"
-        await bot.db.execute(query, (message.chat.id))
+        query = "INSERT INTO User (ID) VALUES (?)"
+        cursor = await bot.db.execute(query, (message.chat.id,))
+        await bot.db.commit()
+        await cursor.close()
         logging.info(f"Added user with ID {message.chat.id}")
     except DatabaseError:
         logging.info(f"Seems there is a user with ID {message.chat.id} already existing in db")
-    await bot.db.commit()
 
     await bot.reply_to(message, """\
 Используй команду \"/add_playlist <URL плейлиста>\", чтобы отслеживать изменения в плейлисте. \
@@ -143,14 +174,14 @@ async def send_welcome(message):
 async def polling():
     while True:
         for playlist_name in playlists_tracks:
-            playlist_id = playlist_name.split('/')[-1]
+            playlist_id = playlist_name.split('/')[-1] 
             user = playlist_name.split('/')[-3]
 
             playlist = await client.users_playlists(playlist_id, user)
             
-            if check_playlist_update(playlist_name, playlist) != 0:
+            if await check_playlist_update(playlist_name, playlist):
 
-                last_added_track_url = get_last_added_track_url(playlist)
+                last_added_track_url = await get_last_added_track_url(playlist)
                 message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track_url}"
 
                 logging.info(message)
