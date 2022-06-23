@@ -29,7 +29,7 @@ def extract_arg(arg):
 
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
-async def get_last_added_track_url(playlist : Playlist):
+def get_last_added_track_url(playlist : Playlist):
     track = playlist.tracks[-1].track
     
     album_id = track.track_id.split(':')[1]
@@ -42,7 +42,7 @@ async def get_last_added_track_url(playlist : Playlist):
 
 # Возвращает разность количества треков на сервере и последнего запомненного состояния, обновляет последнее запомненное состояние
 async def check_playlist_update(playlist_name : str, playlist : Playlist):
-    last_added_track = await get_last_added_track_url(playlist)
+    last_added_track = get_last_added_track_url(playlist)
     try:
         query = "SELECT LastAddedTrack FROM Playlist WHERE Title = ?"
         cursor = await bot.db.execute(query, (playlist_name,))
@@ -61,9 +61,10 @@ async def check_playlist_update(playlist_name : str, playlist : Playlist):
             query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
             await bot.db.execute(query, (last_added_track, playlist_name))
             await bot.db.commit()
-            logging.info(f"Found an update in playlist {playlist_name}; \n LastAddedTrack was {db_last_added_track}, now {last_added_track}")
+            logging.info(f"DB: Found an update in playlist {playlist_name}; \n LastAddedTrack was {db_last_added_track}, now {last_added_track}")
         except DatabaseError as error:
             logging.error(error)
+            logging.error(f"Could not update Playlist for Title = {playlist_name}")
         return True
     return False
 
@@ -75,8 +76,11 @@ async def check_playlist_update(playlist_name : str, playlist : Playlist):
 async def add_playlist(message):
     playlist_name = "/".join(extract_arg(message.text))
     reply = "Дайте минутку, сейчас сделаем 👻"
-    
-    await bot.reply_to(message, reply)
+    try:
+        await bot.reply_to(message, reply)
+    except Exception as error:
+        logging.error(error)
+        logging.error(f"WEB: could not send message to user {message.chat.id}")
 
     if playlist_name is None:
         reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\"!"
@@ -101,7 +105,7 @@ async def add_playlist(message):
         # Добавление в БД
         # 1) плейлист:
         try:
-            last_added_track = await get_last_added_track_url(playlist)
+            last_added_track = get_last_added_track_url(playlist)
             query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
             cursor = await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
             logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")       
@@ -124,8 +128,11 @@ async def add_playlist(message):
             logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
 
         reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
-
-    await bot.reply_to(message, reply)
+    try:
+        await bot.reply_to(message, reply)
+    except Exception as error:
+        logging.error(error)
+        logging.error(f"WEB: could not send message to user {message.chat.id}")
     return
 
 
@@ -133,15 +140,23 @@ async def add_playlist(message):
 @bot.message_handler(commands=['show'])
 async def show_playlists(message):
     logging.info(f"Showing subscriptions to user {message.chat.id}")
-    
-    query = "SELECT * FROM Subscription WHERE User_id = ?"
-    cursor = await bot.db.execute(query, (message.chat.id,))
-    rows = await cursor.fetchall()
-    await cursor.close()
-    # logging.info(type(rows))
+    try:
+        query = "SELECT * FROM Subscription WHERE User_id = ?"
+        cursor = await bot.db.execute(query, (message.chat.id,))
+        rows = await cursor.fetchall()
+        await cursor.close()
+    except DatabaseError as error:
+        logging.error(error)
+        logging.error(f"DB: Could not read Subscription for user {message.chat.id}")
+        
 
     if len(rows) == 0:
-        await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
+        try:
+            await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
+        except Exception as error:
+            logging.error(error)
+            logging.error(f"WEB: could not send message to user {message.chat.id}")
+            
     else:
         playlists_list = []
         for (playlist, user) in rows:
@@ -158,9 +173,9 @@ async def send_welcome(message):
         cursor = await bot.db.execute(query, (message.chat.id,))
         await bot.db.commit()
         await cursor.close()
-        logging.info(f"Added user with ID {message.chat.id}")
+        logging.info(f"DB: Added user with ID {message.chat.id}")
     except DatabaseError:
-        logging.info(f"Seems there is a user with ID {message.chat.id} already existing in db")
+        logging.info(f"DB: Seems there is a user with ID {message.chat.id} already existing in db")
 
     await bot.reply_to(message, """\
 Используй команду \"/add_playlist <URL плейлиста>\", чтобы отслеживать изменения в плейлисте. \
@@ -175,10 +190,15 @@ async def send_welcome(message):
 async def polling():
     while True:
         # Начитаем все плейлисты, на которые кто-то подписан
-        query = "SELECT * FROM Playlist"
-        cursor = await bot.db.execute(query)
-        rows = await cursor.fetchall()
-        await cursor.close()
+        try:
+            query = "SELECT * FROM Playlist"
+            cursor = await bot.db.execute(query)
+            rows = await cursor.fetchall()
+            await cursor.close()
+        except DatabaseError as error:
+            logging.error(error)
+            logging.error("DB: Could not read Playlists")
+            continue
         # Для каждого плейлиста:
         for (playlist_name, last_added_track_db, snapshot) in rows:
             # Начитаем идентификатор для апишки
@@ -189,10 +209,10 @@ async def polling():
                 playlist = await client.users_playlists(playlist_id, user)
             except YandexMusicError as error:
                 logging.error(error)
-                logging.info(f"DB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
+                logging.info(f"WEB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
                 continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист UwU
             
-            last_added_track = await get_last_added_track_url(playlist)
+            last_added_track = get_last_added_track_url(playlist)
 
             if last_added_track_db != last_added_track:
                 message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track}"
@@ -205,16 +225,16 @@ async def polling():
                     await cursor.close()
                 except DatabaseError as error:
                     logging.error(error)
-                    logging.error(f"Could not read Users subscriped to {playlist_name} from db")
+                    logging.error(f"DB: Could not read Users subscriped to {playlist_name} from db")
                     continue
                 # Оповестим подписанных пользователей
                 for (user,) in rows:
-                    logging.info(f"Sending a message: <{message}> to user {user}")
+                    logging.info(f"WEB: Sending a message: <{message}> to user {user}")
                     try:
                         await bot.send_message(user, message)
                     except Exception as error:
                         logging.error(error)
-                        logging.error(f"Could not send message to user {user}")
+                        logging.error(f"WEB: Could not send message to user {user}")
                         continue
 
                 # Обновим БД:
@@ -222,10 +242,10 @@ async def polling():
                     query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
                     await bot.db.execute(query, (last_added_track, playlist_name))
                     await bot.db.commit()
-                    logging.info(f"Found an update in playlist {playlist_name}; \n LastAddedTrack was {last_added_track_db}, now {last_added_track}")
+                    logging.info(f"DB: Updated playlist {playlist_name}: LastAddedTrack was {last_added_track_db}, now {last_added_track}")
                 except DatabaseError as error:
                     logging.error(error)
-                    logging.error(f"Could not update playlist {playlist_name} in db")
+                    logging.error(f"DB: Could not update playlist {playlist_name} in db")
 
 
         await asyncio.sleep(5)
