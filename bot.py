@@ -102,9 +102,9 @@ async def add_playlist(message):
 @bot.message_handler(commands=['show'])
 async def show_playlists(message):
     logging.info(f"showing {message.chat.id}")
-    reply = ""
-    # TODO: SQL injection 
-    cursor = await bot.db.execute(f"SELECT * FROM Subscription WHERE User_id = {message.chat.id}")
+    
+    query = "SELECT * FROM Subscription WHERE User_id = ?"
+    cursor = await bot.db.execute(query, (message.chat.id))
     rows = await cursor.fetchall()
     await cursor.close()
     print(type(rows))
@@ -123,8 +123,8 @@ async def show_playlists(message):
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     try:
-        # TODO: SQL injection 
-        await bot.db.execute(f"INSERT INTO User VALUES ({message.chat.id})")
+        query = "INSERT INTO User VALUES (?)"
+        await bot.db.execute(query, (message.chat.id))
         logging.info(f"Added user with ID {message.chat.id}")
     except DatabaseError:
         logging.info(f"Seems there is a user with ID {message.chat.id} already existing in db")
