@@ -195,7 +195,7 @@ async def polling():
             last_added_track = await get_last_added_track_url(playlist)
 
             if last_added_track_db != last_added_track:
-                message = f"🎼 Новый трек в плейлисте \"{playlist_name}\", вот ссылка:\n{last_added_track}"
+                message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track}"
                 logging.info(message)
                 # Начитаем подписчиков плейлиста
                 try:
@@ -207,9 +207,8 @@ async def polling():
                     logging.error(error)
                     logging.error(f"Could not read Users subscriped to {playlist_name} from db")
                     continue
-
                 # Оповестим подписанных пользователей
-                for (user, playlist) in rows:
+                for (user,) in rows:
                     logging.info(f"Sending a message: <{message}> to user {user}")
                     try:
                         await bot.send_message(user, message)
