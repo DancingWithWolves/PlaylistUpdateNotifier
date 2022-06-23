@@ -16,10 +16,6 @@ load_dotenv()
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = AsyncTeleBot(token)
 
-users_playlists = defaultdict(set)
-playlists_users = defaultdict(set)
-playlists_tracks = {}
-
 client = ClientAsync()
 
 # Возвращает аргумент из сообщения от телеграм-бота (/add_playlist <url> -- вернёт url)
@@ -72,7 +68,6 @@ async def add_playlist(message):
         # Ямузыка апи
         try:
             playlist = await client.users_playlists(playlist_id, user)
-            playlists_tracks[playlist_name] = playlist.track_count
         except YandexMusicError as error:
             reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
             logging.error(error)
@@ -93,8 +88,7 @@ async def add_playlist(message):
         except DatabaseError as error:
             logging.error(error)
             logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
-        
-            
+           
         # 2) подписка пользователя на этот плейлист:
         try:
             query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
@@ -113,7 +107,6 @@ async def add_playlist(message):
         logging.error(error)
         logging.error(f"WEB: could not send message to user {message.chat.id}")
     return
-
 
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
 @bot.message_handler(commands=['show'])
@@ -141,8 +134,6 @@ async def show_playlists(message):
         for (playlist, user) in rows:
             playlists_list.append(playlist)
         await bot.reply_to(message, "📌" + "📌\n".join(playlists_list))
-
-            
 
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
@@ -226,7 +217,6 @@ async def polling():
                     logging.error(error)
                     logging.error(f"DB: Could not update playlist {playlist_name} in db")
 
-
         await asyncio.sleep(5)
 
 
@@ -235,6 +225,5 @@ async def main():
     async with aiosqlite.connect('PlaylistUpdateNotifier.db') as bot.db:
         await asyncio.gather(bot.infinity_polling(), polling())
 
-
-# Запуск основого (за)лупа
+# Запуск основого лупа
 asyncio.run(main())
