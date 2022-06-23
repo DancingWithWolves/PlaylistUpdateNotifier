@@ -190,7 +190,7 @@ async def polling():
             except YandexMusicError as error:
                 logging.error(error)
                 logging.info(f"DB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
-                continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист :)
+                continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист UwU
             
             last_added_track = await get_last_added_track_url(playlist)
 
