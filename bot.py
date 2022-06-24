@@ -36,9 +36,47 @@ def get_last_added_track_url(playlist : Playlist):
     
     return last_added_track_url
 
+async def reply_to_message(message, reply):
+    try:
+        await bot.reply_to(message, reply)
+    except Exception as error:
+        logging.error(error)
+        logging.error(f"WEB: could not send message to user {message.chat.id}")
+
+
+# Обработка '/delete_playlist', проверка на наличие ввода, удаление подписки.
+@bot.message_handler(commands=['delete_playlist'])
+async def delete_playlist(message):
+    # Мгновенный ответ
+    await reply_to_message(message, "Дайте минутку, сейчас сделаем 👻")
+    
+    # Проверка корректности ввода
+    try:
+        playlist_name = "/".join(extract_arg(message.text))
+    except Exception as error:
+        logging.info("User {message.chat.id} entered non-valid URL: {message.text}")
+        await reply_to_message(message, "Укажите какой-нибудь URL, вы чо 🐷\nПосмотреть плейлисты можно командой \"/show\"")
+        return
+    try:
+        query = "DELETE FROM Subscription WHERE User_id = ? AND Playlist_id = ?"
+        await bot.db.execute(query, (message.chat.id, playlist_name))
+        await bot.db.commit()
+        logging.info(f"DB: Deleted Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
+        
+    except DatabaseError as error:
+        logging.error(error)
+        logging.info(f"DB: Seems there were no Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
+    
+    await reply_to_message(message, "Подписка на плейлист успешно удалена! ✅")
+    return
+
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
+    # Мгновенный ответ
+    await reply_to_message(message, "Дайте минутку, сейчас сделаем 👻")
+    
+    # Проверка корректности ввода
     try:
         playlist_name = "/".join(extract_arg(message.text))
         # Начитка нужных для апи ямузыки полей, если не получается, то шляпа какая-то
@@ -46,30 +84,16 @@ async def add_playlist(message):
         user = message.text.split('/')[-3]
     except Exception as error:
         logging.info("User {message.chat.id} entered non-valid URL: {message.text}")
-        reply = "Укажите валидный URL через один пробел после команды \"/add_playlist\" 🐷"
-        try:
-            await bot.reply_to(message, reply)
-        except Exception as error:
-            logging.error(error)
-            logging.error(f"WEB: could not send message to user {message.chat.id}")
+        await reply_to_message(message, "Укажите валидный URL через один пробел после команды \"/add_playlist\" 🐳")
         return
-    reply = "Дайте минутку, сейчас сделаем 👻"
-    try:
-        await bot.reply_to(message, reply)
-    except Exception as error:
-        logging.error(error)
-        logging.error(f"WEB: could not send message to user {message.chat.id}")
-
-    logging.info(f"adding {message.chat.id}: {playlist_name}")
+    
     # Ямузыка апи
     try:
         playlist = await client.users_playlists(playlist_id, user)
     except YandexMusicError as error:
-        reply = "Или такого плейлиста не существует, или мы неправильно смотрим 👀"
         logging.error(error)
         logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
-        await bot.reply_to(message, reply)
-
+        await reply_to_message(message, "Или такого плейлиста не существует, или мы неправильно смотрим 👀")
         return
 
     # Добавление в БД
@@ -77,10 +101,9 @@ async def add_playlist(message):
     try:
         last_added_track = get_last_added_track_url(playlist)
         query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
-        cursor = await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
-        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")       
+        await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
         await bot.db.commit()
-        await cursor.close()
+        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")
     except DatabaseError as error:
         logging.error(error)
         logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
@@ -89,19 +112,14 @@ async def add_playlist(message):
     try:
         query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
         cursor = await bot.db.execute(query, (message.chat.id, playlist_name))
-        logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
         await bot.db.commit()
         await cursor.close()
+        logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
     except DatabaseError as error:
         logging.error(error)
         logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
-
-    reply = "Плейлист успешно добавлен в отслеживаемые! ✅"
-    try:
-        await bot.reply_to(message, reply)
-    except Exception as error:
-        logging.error(error)
-        logging.error(f"WEB: could not send message to user {message.chat.id}")
+    
+    await reply_to_message(message, "Плейлист успешно добавлен в отслеживаемые! ✅")
     return
 
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
@@ -119,35 +137,30 @@ async def show_playlists(message):
         
 
     if len(rows) == 0:
-        try:
-            await bot.reply_to(message, "Вы не отслеживаете ни один плейлист ❌")
-        except Exception as error:
-            logging.error(error)
-            logging.error(f"WEB: could not send message to user {message.chat.id}")
-            
+        await reply_to_message(message, "Вы не отслеживаете ни один плейлист ❌")            
     else:
         playlists_list = []
         for (playlist, user) in rows:
             playlists_list.append(playlist)
-        await bot.reply_to(message, "📌" + "📌\n".join(playlists_list))
+        await reply_to_message(message, "📌" + "📌\n".join(playlists_list))
 
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
     try:
         query = "INSERT INTO User (ID) VALUES (?)"
-        cursor = await bot.db.execute(query, (message.chat.id,))
+        await bot.db.execute(query, (message.chat.id,))
         await bot.db.commit()
-        await cursor.close()
         logging.info(f"DB: Added user with ID {message.chat.id}")
     except DatabaseError:
         logging.info(f"DB: Seems there is a user with ID {message.chat.id} already existing in db")
-
-    await bot.reply_to(message, """\
-Используй команду \"/add_playlist <URL плейлиста>\", чтобы отслеживать изменения в плейлисте. \
+    
+    await reply_to_message(message, """\
+📌Используй команду \"/add_playlist <URL плейлиста>\", чтобы отслеживать изменения в плейлисте. \
 Когда в него добавится какой-то трек, в этот чат придёт \
 ссылка на него!
-Команда \"/show\" покажет текущие отслеживаемые плейлисты.
+📌Добавленные плейлисты можно удалить командой \"delete_playlist\"
+📌Команда \"/show\" покажет текущие отслеживаемые плейлисты.
 Остальные команды проигнорируются.
 Подписывайтесь на боярхив vk.com/boyarchive""")
 
