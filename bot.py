@@ -27,6 +27,8 @@ def extract_arg(arg):
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
 def get_last_added_track_url(playlist : Playlist):
+    if playlist.track_count == 0:
+        return "https://music.yandex.ru/album/9046986/track/609676"
     track = playlist.tracks[-1].track
     
     album_id = track.track_id.split(':')[1]
