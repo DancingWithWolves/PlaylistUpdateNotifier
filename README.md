@@ -4,5 +4,6 @@
 # Зависимости
 За менеджмент зависимостей отвечает _pipenv_
 1) ```pip3 install pipenv```
-2) ``` pienv shell```
+2) ``` pipenv shell```
 3) ```pipenv sync```
+4) ```python3 bot.py``` 
