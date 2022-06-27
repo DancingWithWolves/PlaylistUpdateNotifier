@@ -9,7 +9,7 @@ from yandex_music import Playlist
 from yandex_music.exceptions import YandexMusicError
 import aiosqlite
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(filename="Log.txt", level=logging.INFO)
 load_dotenv()
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -32,7 +32,12 @@ def get_last_added_track_url(playlist : Playlist):
     track = playlist.tracks[-1]
     
     album_id = track.album_id
+    if album_id is None:
+        album_id = track.track.track_id.split(':')[1]
+    
     track_id = track.id
+    if track_id is None:
+        track_id = track.track.track_id.split(':')[0]
     
     last_added_track_url = f"https://music.yandex.ru/album/{album_id}/track/{track_id}"
     
@@ -190,7 +195,7 @@ async def polling():
                 playlist = await client.users_playlists(playlist_id, user)
             except YandexMusicError as error:
                 logging.error(error)
-                logging.info(f"WEB: Seems there is a no Playlist with Title = \"{playlist_name}\"")
+                logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
                 continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист UwU
             
             last_added_track = get_last_added_track_url(playlist)
@@ -210,7 +215,7 @@ async def polling():
                     continue
                 # Оповестим подписанных пользователей
                 for (user,) in rows:
-                    logging.info(f"WEB: Sending a message: <{message}> to user {user}")
+                    logging.info(f"WEB: Sending an update message: to user {user}")
                     try:
                         await bot.send_message(user, message)
                     except Exception as error:
