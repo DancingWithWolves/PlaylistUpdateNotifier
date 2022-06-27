@@ -1,7 +1,6 @@
 import asyncio
 import os
 import logging
-from collections import defaultdict
 from sqlite3 import DatabaseError
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
@@ -16,7 +15,8 @@ load_dotenv()
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 bot = AsyncTeleBot(token)
 
-client = ClientAsync()
+ym_token = os.getenv('YANDEX_MUSIC_TOKEN')
+client = ClientAsync(ym_token)
 
 # Возвращает аргумент из сообщения от телеграм-бота (/add_playlist <url> -- вернёт url)
 def extract_arg(arg):
@@ -29,10 +29,10 @@ def extract_arg(arg):
 def get_last_added_track_url(playlist : Playlist):
     if playlist.track_count == 0:
         return "https://music.yandex.ru/album/9046986/track/609676"
-    track = playlist.tracks[-1].track
+    track = playlist.tracks[-1]
     
-    album_id = track.track_id.split(':')[1]
-    track_id = track.track_id.split(':')[0]
+    album_id = track.album_id
+    track_id = track.id
     
     last_added_track_url = f"https://music.yandex.ru/album/{album_id}/track/{track_id}"
     
