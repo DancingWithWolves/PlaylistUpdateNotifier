@@ -2,3 +2,4 @@
 .vscode
 test_it_up.py
 PlaylistUpdateNotifier.db
+Log.txt
