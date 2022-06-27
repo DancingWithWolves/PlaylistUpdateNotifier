@@ -144,7 +144,7 @@ async def show_playlists(message):
         playlists_list = []
         for (playlist, user) in rows:
             playlists_list.append(playlist)
-        await reply_to_message(message, "📌" + "\n📌\n".join(playlists_list))
+        await reply_to_message(message, "📌\n" + "\n📌\n".join(playlists_list))
 
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
