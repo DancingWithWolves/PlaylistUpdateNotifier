@@ -14,5 +14,6 @@
 1) ```touch .env```
 2) ```vim .env``` 
 3) TELEGRAM_BOT_TOKEN="ваш_телеграм_бот_токен"
-4) ecs+:+w+q+!
-5) You're awesome!
+4) YANDEX_MUSIC_TOKEN="ваш_ямузыка_токен"
+5) ecs+:+w+q+!
+6) You're breathtaking!
