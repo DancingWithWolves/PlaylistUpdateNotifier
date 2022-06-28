@@ -9,7 +9,9 @@ from yandex_music import Playlist
 from yandex_music.exceptions import YandexMusicError
 import aiosqlite
 
-logging.basicConfig(filename="Log.txt", level=logging.INFO)
+logging.basicConfig(filename="Log.txt", 
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    level=logging.INFO)
 load_dotenv()
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
