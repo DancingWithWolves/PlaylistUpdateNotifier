@@ -28,22 +28,21 @@ def extract_arg(arg):
         raise Exception
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
-def get_last_added_track_url(playlist : Playlist):
+async def last_added_track_url_title(playlist : Playlist):
     if playlist.track_count == 0:
-        return "https://music.yandex.ru/album/9046986/track/609676"
-    track = playlist.tracks[-1]
-    
-    album_id = track.album_id
-    if album_id is None:
-        album_id = track.track.track_id.split(':')[1]
-    
-    track_id = track.id
-    if track_id is None:
-        track_id = track.track.track_id.split(':')[0]
-    
+        return "https://music.yandex.ru/album/9046986/track/609676", "You got rickrolled OwO"
+
+    short_track = playlist.tracks[-1]  
+    track = await short_track.fetch_track_async()
+
+    album_id = track.track_id.split(':')[1] 
+    track_id = track.track_id.split(':')[0]
+    title = track.title
+
     last_added_track_url = f"https://music.yandex.ru/album/{album_id}/track/{track_id}"
     
-    return last_added_track_url
+    return last_added_track_url, title
+
 
 async def reply_to_message(message, reply):
     try:
@@ -79,6 +78,7 @@ async def delete_playlist(message):
     await reply_to_message(message, "Подписка на плейлист успешно удалена! ✅")
     return
 
+
 # Обработка '/add_playlist', проверка на наличие ввода, добавление плейлиста в отслеживаемые.
 @bot.message_handler(commands=['add_playlist'])
 async def add_playlist(message):
@@ -108,11 +108,11 @@ async def add_playlist(message):
     # Добавление в БД
     # 1) плейлист:
     try:
-        last_added_track = get_last_added_track_url(playlist)
+        last_added_track_url, title = await last_added_track_url_title(playlist)
         query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
-        await bot.db.execute(query, (playlist_name, last_added_track, playlist.snapshot))
+        await bot.db.execute(query, (playlist_name, last_added_track_url, playlist.snapshot))
         await bot.db.commit()
-        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track}, Snapshot = {playlist.snapshot}")
+        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track_url}, Snapshot = {playlist.snapshot}")
     except DatabaseError as error:
         logging.error(error)
         logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
@@ -130,6 +130,7 @@ async def add_playlist(message):
     
     await reply_to_message(message, "Плейлист успешно добавлен в отслеживаемые! ✅")
     return
+
 
 # Обработка '/show', в ответном сообщении вывод списка отслеживаемых плейлистов
 @bot.message_handler(commands=['show'])
@@ -153,6 +154,7 @@ async def show_playlists(message):
             playlists_list.append(playlist)
         await reply_to_message(message, "📌\n" + "\n📌\n".join(playlists_list))
 
+
 # Обработка '/start' и '/help'
 @bot.message_handler(commands=['help', 'start'])
 async def send_welcome(message):
@@ -172,6 +174,7 @@ async def send_welcome(message):
 📌Команда \"/show\" покажет текущие отслеживаемые плейлисты.
 Остальные команды проигнорируются.
 Подписывайтесь на боярхив vk.com/boyarchive""")
+
 
 # Каждые 5 секунд проверяет все плейлисты, которые кем-то отслеживаются, 
 # и рассылает сообщения об обновлениях, если такие имеются
@@ -200,10 +203,10 @@ async def polling():
                 logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
                 continue # Если _на этом_ этапе что-то не так, просто скипаем этот плейлист UwU
             
-            last_added_track = get_last_added_track_url(playlist)
+            last_added_track_url, title = await last_added_track_url_title(playlist)
 
-            if last_added_track_db != last_added_track:
-                message = f"🎼 Новый трек в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track}"
+            if last_added_track_db != last_added_track_url:
+                message = f"🎼 Новый трек \"{title}\" в плейлисте \"{playlist.title}\", вот ссылка:\n{last_added_track_url}"
                 logging.info(message)
                 # Начитаем подписчиков плейлиста
                 try:
@@ -228,9 +231,9 @@ async def polling():
                 # Обновим БД:
                 try:
                     query = "UPDATE Playlist SET LastAddedTrack = ? WHERE Title = ?"
-                    await bot.db.execute(query, (last_added_track, playlist_name))
+                    await bot.db.execute(query, (last_added_track_url, playlist_name))
                     await bot.db.commit()
-                    logging.info(f"DB: Updated playlist {playlist_name}: LastAddedTrack was {last_added_track_db}, now {last_added_track}")
+                    logging.info(f"DB: Updated playlist {playlist_name}: LastAddedTrack was {last_added_track_db}, now {last_added_track_url}")
                 except DatabaseError as error:
                     logging.error(error)
                     logging.error(f"DB: Could not update playlist {playlist_name} in db")
@@ -242,6 +245,7 @@ async def main():
     await client.init()
     async with aiosqlite.connect('PlaylistUpdateNotifier.db') as bot.db:
         await asyncio.gather(bot.infinity_polling(), polling())
+
 
 # Запуск основого лупа
 asyncio.run(main())
