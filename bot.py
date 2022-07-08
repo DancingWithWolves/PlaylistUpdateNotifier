@@ -256,4 +256,3 @@ while 1:
     except Exception as error:
         logging.error(error)
         logging.error(f"Gonna restart the app!")
-    
