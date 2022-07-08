@@ -12,6 +12,8 @@ import aiosqlite
 logging.basicConfig(filename="Log.txt", 
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     level=logging.INFO)
+                    
+logging.info(f"Started an app with PID = {os.getpid()}")
 load_dotenv()
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -248,4 +250,10 @@ async def main():
 
 
 # Запуск основого лупа
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except Exception as error:
+    logging.error(error)
+    logging.error(f"Gonna restart the app!")
+    os.system("python3 bot.py")
+    exit()
