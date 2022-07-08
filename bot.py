@@ -250,10 +250,10 @@ async def main():
 
 
 # Запуск основого лупа
-try:
-    asyncio.run(main())
-except Exception as error:
-    logging.error(error)
-    logging.error(f"Gonna restart the app!")
-    os.system("python3 bot.py")
-    exit()
+while 1:
+    try:
+        asyncio.run(main())
+    except Exception as error:
+        logging.error(error)
+        logging.error(f"Gonna restart the app!")
+    
