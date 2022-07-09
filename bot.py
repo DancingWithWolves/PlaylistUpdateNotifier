@@ -252,6 +252,14 @@ async def main():
 # Запуск основого лупа
 while 1:
     try:
+        logging.info("starting an app!")
+        
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        bot = AsyncTeleBot(token)
+
+        ym_token = os.getenv('YANDEX_MUSIC_TOKEN')
+        client = ClientAsync(ym_token)
+        
         asyncio.run(main())
     except Exception as error:
         logging.error(error)
