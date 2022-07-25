@@ -9,7 +9,7 @@ from yandex_music import Playlist
 from yandex_music.exceptions import YandexMusicError
 import aiosqlite
 
-logging.basicConfig(filename="Log.txt", 
+logging.basicConfig(filename="Log.log", 
                     format='%(asctime)s %(levelname)-8s %(message)s',
                     level=logging.INFO)
                     
