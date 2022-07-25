@@ -31,11 +31,15 @@ def extract_arg(arg):
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
 async def last_added_track_url_title(playlist : Playlist):
-    if playlist.track_count == 0:
+    if playlist.track_count == 0 or playlist is None:
         return "https://music.yandex.ru/album/9046986/track/609676", "You got rickrolled OwO"
 
     short_track = playlist.tracks[-1]  
-    track = await short_track.fetch_track_async()
+    try:
+        track = await short_track.fetch_track_async()
+    except Exception as error:
+        logging.error(error)
+        logging.error(f"WEB: could not fetch track {short_track.id} from Playlist {playlist.title}")
 
     album_id = track.track_id.split(':')[1] 
     track_id = track.track_id.split(':')[0]
@@ -71,8 +75,7 @@ async def delete_playlist(message):
         query = "DELETE FROM Subscription WHERE User_id = ? AND Playlist_id = ?"
         await bot.db.execute(query, (message.chat.id, playlist_name))
         await bot.db.commit()
-        logging.info(f"DB: Deleted Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
-        
+        logging.info(f"DB: Deleted Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")  
     except DatabaseError as error:
         logging.error(error)
         logging.info(f"DB: Seems there were no Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
@@ -94,7 +97,7 @@ async def add_playlist(message):
         playlist_id = message.text.split('/')[-1]
         user = message.text.split('/')[-3]
     except Exception as error:
-        logging.info("User {message.chat.id} entered non-valid URL: {message.text}")
+        logging.info("Пользователь {message.chat.id} ввёл невалидный URL: {message.text}")
         await reply_to_message(message, "Укажите валидный URL через один пробел после команды \"/add_playlist\" 🐳")
         return
     
