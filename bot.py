@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+from posixpath import split
 from sqlite3 import DatabaseError
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
@@ -29,6 +30,35 @@ def extract_arg(arg):
     else:
         raise Exception
 
+#Крч я наделала кучу ненужных методов, но мне не стыдно
+
+#Возвращает айди плейлиста, который используется в ссылке
+def get_link_playlist_id(playlist : Playlist):
+    x = playlist.playlistId.split(':')[1]
+    return x
+
+#Возвращает имя пользователя, которое используется в ссылке
+def get_link_user_login(playlist : Playlist):
+    x = playlist.owner.login
+    return x
+
+#Ссылка на плейлист из сущности
+def get_playlist_link(playlist : Playlist):
+    return f"https://music.yandex.ru/users/{get_link_user_login(playlist)}/playlists/{get_link_playlist_id(playlist)}"
+
+#Тырим id плейлиста из ссылки
+def get_playlist_id(str):
+    return str.split('/')[-1]
+
+#Тырим логин пользователя из ссылки
+def get_playlist_user_login(str):
+    return str.split('/')[-3]
+
+#Получаем сущность плейлиста из ссылки
+async def get_playlist_from_url(str):
+    x : Playlist = await client.users_playlists(get_playlist_id(str), get_playlist_user_login(str))
+    return x
+
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
 async def last_added_track_url_title(playlist : Playlist):
     if playlist.track_count == 0 or playlist is None:
@@ -49,7 +79,7 @@ async def last_added_track_url_title(playlist : Playlist):
     
     return last_added_track_url, title
 
-
+#reply_to но с логированием
 async def reply_to_message(message, reply):
     try:
         await bot.reply_to(message, reply)
@@ -57,6 +87,12 @@ async def reply_to_message(message, reply):
         logging.error(error)
         logging.error(f"WEB: could not send message to user {message.chat.id}")
 
+#test command
+@bot.message_handler(commands=['test'])
+async def create_playlist(message):
+    playlist  : Playlist = await client.users_playlists('1004', 'zzeve')
+    playlist = await get_playlist_from_url(get_playlist_link(playlist))
+    await reply_to_message(message, playlist.title)
 
 # Обработка '/delete_playlist', проверка на наличие ввода, удаление подписки.
 @bot.message_handler(commands=['delete_playlist'])
