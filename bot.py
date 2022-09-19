@@ -32,32 +32,43 @@ def extract_arg(arg):
 
 #Крч я наделала кучу ненужных методов, но мне не стыдно
 
-#Возвращает айди плейлиста, который используется в ссылке
-def get_link_playlist_id(playlist : Playlist):
-    x = playlist.playlistId.split(':')[1]
-    return x
+#Возвращает айди плейлиста из сущности
+def get_from_playlist_id(playlist : Playlist):
+    return playlist.playlistId.split(':')[1]
 
-#Возвращает имя пользователя, которое используется в ссылке
-def get_link_user_login(playlist : Playlist):
-    x = playlist.owner.login
-    return x
+#Возвращает имя пользователя из сущности
+def get_user_login(playlist : Playlist):
+    return playlist.owner.login
 
 #Ссылка на плейлист из сущности
-def get_playlist_link(playlist : Playlist):
-    return f"https://music.yandex.ru/users/{get_link_user_login(playlist)}/playlists/{get_link_playlist_id(playlist)}"
+def get_playlist_url(playlist : Playlist):
+    return f"https://music.yandex.ru/users/{get_user_login(playlist)}/playlists/{get_from_playlist_id(playlist)}"
 
 #Тырим id плейлиста из ссылки
 def get_playlist_id(str):
-    return str.split('/')[-1]
+    if (str.find('?') != -1):
+        return str[str.find('/playlists/')+len('/playlists/'):str.rfind('?')]
+    else:
+        return str.split('/')[-1]
 
 #Тырим логин пользователя из ссылки
 def get_playlist_user_login(str):
-    return str.split('/')[-3]
+    return str[str.find('/users/')+len('/users/'):str.rfind('/playlists/')] #str.split('/')[-3]
 
 #Получаем сущность плейлиста из ссылки
 async def get_playlist_from_url(str):
     x : Playlist = await client.users_playlists(get_playlist_id(str), get_playlist_user_login(str))
     return x
+
+#Данные плейлиста для сохранения в базу данных ИмяПользователя:АйдиПлейлиста
+def playlist_to_db(playlist : Playlist):
+    return f"{get_user_login(playlist)}:{get_from_playlist_id(playlist)}"
+
+#Имя пользователя и айди плейлиста из базы данных
+async def playlist_from_db(str):
+    login = str.split(':')[0]
+    playlist_id = str.split(':')[1]
+    return await client.users_playlists(playlist_id,login)
 
 # Возвращает строку, в которой хранится собранный на коленке URL последнего добавленного трека
 async def last_added_track_url_title(playlist : Playlist):
@@ -90,9 +101,7 @@ async def reply_to_message(message, reply):
 #test command
 @bot.message_handler(commands=['test'])
 async def create_playlist(message):
-    playlist  : Playlist = await client.users_playlists('1004', 'zzeve')
-    playlist = await get_playlist_from_url(get_playlist_link(playlist))
-    await reply_to_message(message, playlist.title)
+    await reply_to_message(message, "Я работаю!")
 
 # Обработка '/delete_playlist', проверка на наличие ввода, удаление подписки.
 @bot.message_handler(commands=['delete_playlist'])
@@ -102,9 +111,12 @@ async def delete_playlist(message):
     
     # Проверка корректности ввода
     try:
-        playlist_name = "/".join(extract_arg(message.text))
+        playlist_link = "/".join(extract_arg(message.text))
+        playlist : Playlist = await get_playlist_from_url(playlist_link)
+        playlist_name = playlist_to_db(playlist)
     except Exception as error:
-        logging.info("User {message.chat.id} entered non-valid URL: {message.text}")
+        logging.error(error)
+        logging.info(f"User {message.chat.id} entered non-valid URL: {message.text}")
         await reply_to_message(message, "Укажите какой-нибудь URL, вы чо 🐷\nПосмотреть плейлисты можно командой \"/show\"")
         return
     try:
@@ -130,19 +142,20 @@ async def add_playlist(message):
     try:
         playlist_name = "/".join(extract_arg(message.text))
         # Начитка нужных для апи ямузыки полей, если не получается, то шляпа какая-то
-        playlist_id = message.text.split('/')[-1]
-        user = message.text.split('/')[-3]
+        # playlist_id = message.text.split('/')[-1]
+        # user = message.text.split('/')[-3]
     except Exception as error:
-        logging.info("Пользователь {message.chat.id} ввёл невалидный URL: {message.text}")
+        logging.info(f"Пользователь {message.chat.id} ввёл невалидный URL: {message.text}")
         await reply_to_message(message, "Укажите валидный URL через один пробел после команды \"/add_playlist\" 🐳")
         return
     
     # Ямузыка апи
     try:
-        playlist = await client.users_playlists(playlist_id, user)
+        playlist : Playlist = await get_playlist_from_url(playlist_name)
+        p_id = playlist_to_db(playlist)
     except YandexMusicError as error:
         logging.error(error)
-        logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
+        logging.info(f"WEB: Seems there is no Playlist with Title = \"{p_id}\"")
         await reply_to_message(message, "Или такого плейлиста не существует, или мы неправильно смотрим 👀")
         return
 
@@ -151,23 +164,23 @@ async def add_playlist(message):
     try:
         last_added_track_url, title = await last_added_track_url_title(playlist)
         query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
-        await bot.db.execute(query, (playlist_name, last_added_track_url, playlist.snapshot))
+        await bot.db.execute(query, (p_id, last_added_track_url, playlist.snapshot))
         await bot.db.commit()
-        logging.info(f"DB: Added Playlist with Title = \"{playlist_name}\", LastAddedTrack = {last_added_track_url}, Snapshot = {playlist.snapshot}")
+        logging.info(f"DB: Added Playlist with Title = \"{p_id}\", LastAddedTrack = {last_added_track_url}, Snapshot = {playlist.snapshot}")
     except DatabaseError as error:
         logging.error(error)
-        logging.info(f"DB: Seems there is a Playlist with Title = \"{playlist_name}\" already existing in db")
+        logging.info(f"DB: Seems there is a Playlist with Title = \"{p_id}\" already existing in db")
         
     # 2) подписка пользователя на этот плейлист:
     try:
         query = "INSERT INTO Subscription (User_id, Playlist_id) VALUES (?, ?)"
-        cursor = await bot.db.execute(query, (message.chat.id, playlist_name))
+        cursor = await bot.db.execute(query, (message.chat.id, p_id))
         await bot.db.commit()
         await cursor.close()
-        logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\"")
+        logging.info(f"DB: Added Subscription with User_id = {message.chat.id}, Playlist_id = \"{p_id}\"")
     except DatabaseError as error:
         logging.error(error)
-        logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{playlist_name}\" already existing in db")
+        logging.info(f"DB: Seems there is a Subscription with User_id = {message.chat.id}, Playlist_id = \"{p_id}\" already existing in db")
     
     await reply_to_message(message, "Плейлист успешно добавлен в отслеживаемые! ✅")
     return
@@ -192,7 +205,11 @@ async def show_playlists(message):
     else:
         playlists_list = []
         for (playlist, user) in rows:
-            playlists_list.append(playlist)
+            if (playlist.find('music.yandex') != -1):
+                playlists_list.append(playlist)
+            else:
+                #вот тут плохо
+                playlists_list.append(get_playlist_url(await playlist_from_db(playlist)))
         await reply_to_message(message, "📌\n" + "\n📌\n".join(playlists_list))
 
 
@@ -234,11 +251,15 @@ async def polling():
         # Для каждого плейлиста:
         for (playlist_name, last_added_track_db, snapshot) in rows:
             # Начитаем идентификатор для апишки
-            playlist_id = playlist_name.split('/')[-1] 
-            user = playlist_name.split('/')[-3]
+            if (playlist_name.find('music.yandex') != -1):
+                playlist_id = playlist_name.split('/')[-1] 
+                user_log = playlist_name.split('/')[-3]
             # Дёрнем апишку
             try:
-                playlist = await client.users_playlists(playlist_id, user)
+                if (playlist_name.find('music.yandex') != -1):
+                    playlist = await client.users_playlists(playlist_id, user_log)
+                else:
+                    playlist = await playlist_from_db(playlist_name)
             except YandexMusicError as error:
                 logging.error(error)
                 logging.info(f"WEB: Seems there is no Playlist with Title = \"{playlist_name}\"")
