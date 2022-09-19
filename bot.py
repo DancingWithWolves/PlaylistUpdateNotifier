@@ -98,10 +98,50 @@ async def reply_to_message(message, reply):
         logging.error(error)
         logging.error(f"WEB: could not send message to user {message.chat.id}")
 
-#test command
-@bot.message_handler(commands=['test'])
-async def create_playlist(message):
+#swap_playlists из ссылок в ИмяПользователя:АйдиПлейлиста
+@bot.message_handler(commands=['swap_playlists'])
+async def swap_playlists(message):
     await reply_to_message(message, "Я работаю!")
+    try:
+        query = "SELECT * FROM Playlist"
+        cursor = await bot.db.execute(query)
+        rows = await cursor.fetchall()
+        await cursor.close()
+    except DatabaseError as error:
+        logging.error(error)
+        logging.error("DB: Could not read Playlists")
+    # Для каждого плейлиста:
+    for (playlist_name, last_added_track_db, snapshot) in rows:
+        # Начитаем идентификатор для апишки
+        if (playlist_name.find('music.yandex') != -1):
+            playlist_id = playlist_name.split('/')[-1] 
+            user_log = playlist_name.split('/')[-3]
+            playlist_db_id = f"{user_log}:{playlist_id}"
+            try:
+                query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
+                await bot.db.execute(query, (playlist_db_id, last_added_track_db, snapshot))
+                await bot.db.commit()
+                logging.info(f"DB: Added playlist {playlist_name}: New id is {playlist_db_id}")
+            except DatabaseError as error:
+                logging.error(error)
+                logging.error(f"DB: Could not update playlist {playlist_name} in db")
+            try:
+                query = "UPDATE Subscription SET playlist_id = ? WHERE playlist_id = ?"
+                await bot.db.execute(query, (playlist_db_id, playlist_name))
+                await bot.db.commit()
+                logging.info(f"DB: Changed subscription for {playlist_name}: New id is {playlist_db_id}")
+            except DatabaseError as error:
+                logging.error(error)
+                logging.error(f"DB: Could not update subscription for {playlist_name} in db")
+            try:
+                query = "DELETE FROM Playlist WHERE Title = ?"
+                await bot.db.execute(query, (playlist_name,))
+                await bot.db.commit()
+                logging.info(f"DB: Deleted playlist {playlist_name}: New id is {playlist_db_id}")
+            except DatabaseError as error:
+                logging.error(error)
+                logging.error(f"DB: Could not update playlist {playlist_name} in db")
+            
 
 # Обработка '/delete_playlist', проверка на наличие ввода, удаление подписки.
 @bot.message_handler(commands=['delete_playlist'])
@@ -304,6 +344,7 @@ async def polling():
 
 
 async def main():
+    client = ClientAsync(ym_token)
     await client.init()
     async with aiosqlite.connect('PlaylistUpdateNotifier.db') as bot.db:
         await asyncio.gather(bot.infinity_polling(), polling())
