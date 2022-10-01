@@ -347,7 +347,7 @@ async def main():
     client = ClientAsync(ym_token)
     await client.init()
     async with aiosqlite.connect('PlaylistUpdateNotifier.db') as bot.db:
-        await asyncio.gather(bot.infinity_polling(), polling())
+        await asyncio.gather(bot.infinity_polling(non_stop=true), polling())
 
 
 # Запуск основого лупа
