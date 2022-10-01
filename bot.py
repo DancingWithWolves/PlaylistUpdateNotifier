@@ -33,36 +33,36 @@ def extract_arg(arg):
 #Крч я наделала кучу ненужных методов, но мне не стыдно
 
 #Возвращает айди плейлиста из сущности
-def get_from_playlist_id(playlist : Playlist):
+def get_id_from_playlist(playlist : Playlist):
     return playlist.playlistId.split(':')[1]
 
 #Возвращает имя пользователя из сущности
-def get_user_login(playlist : Playlist):
+def get_login_from_playlist(playlist : Playlist):
     return playlist.owner.login
 
 #Ссылка на плейлист из сущности
-def get_playlist_url(playlist : Playlist):
-    return f"https://music.yandex.ru/users/{get_user_login(playlist)}/playlists/{get_from_playlist_id(playlist)}"
+def get_url_from_playlist(playlist : Playlist):
+    return f"https://music.yandex.ru/users/{get_login_from_playlist(playlist)}/playlists/{get_id_from_playlist(playlist)}"
 
 #Тырим id плейлиста из ссылки
-def get_playlist_id(str):
+def get_playlist_id_from_url(str):
     if (str.find('?') != -1):
         return str[str.find('/playlists/')+len('/playlists/'):str.rfind('?')]
     else:
         return str.split('/')[-1]
 
 #Тырим логин пользователя из ссылки
-def get_playlist_user_login(str):
+def get_login_from_url(str):
     return str[str.find('/users/')+len('/users/'):str.rfind('/playlists/')] #str.split('/')[-3]
 
 #Получаем сущность плейлиста из ссылки
 async def get_playlist_from_url(str):
-    x : Playlist = await client.users_playlists(get_playlist_id(str), get_playlist_user_login(str))
+    x : Playlist = await client.users_playlists(get_playlist_id_from_url(str), get_login_from_url(str))
     return x
 
 #Данные плейлиста для сохранения в базу данных ИмяПользователя:АйдиПлейлиста
 def playlist_to_db(playlist : Playlist):
-    return f"{get_user_login(playlist)}:{get_from_playlist_id(playlist)}"
+    return f"{get_login_from_playlist(playlist)}:{get_id_from_playlist(playlist)}"
 
 #Имя пользователя и айди плейлиста из базы данных
 async def playlist_from_db(str):
@@ -98,49 +98,49 @@ async def reply_to_message(message, reply):
         logging.error(error)
         logging.error(f"WEB: could not send message to user {message.chat.id}")
 
-#swap_playlists из ссылок в ИмяПользователя:АйдиПлейлиста
-@bot.message_handler(commands=['swap_playlists'])
-async def swap_playlists(message):
-    await reply_to_message(message, "Я работаю!")
-    try:
-        query = "SELECT * FROM Playlist"
-        cursor = await bot.db.execute(query)
-        rows = await cursor.fetchall()
-        await cursor.close()
-    except DatabaseError as error:
-        logging.error(error)
-        logging.error("DB: Could not read Playlists")
-    # Для каждого плейлиста:
-    for (playlist_name, last_added_track_db, snapshot) in rows:
-        # Начитаем идентификатор для апишки
-        if (playlist_name.find('music.yandex') != -1):
-            playlist_id = playlist_name.split('/')[-1] 
-            user_log = playlist_name.split('/')[-3]
-            playlist_db_id = f"{user_log}:{playlist_id}"
-            try:
-                query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
-                await bot.db.execute(query, (playlist_db_id, last_added_track_db, snapshot))
-                await bot.db.commit()
-                logging.info(f"DB: Added playlist {playlist_name}: New id is {playlist_db_id}")
-            except DatabaseError as error:
-                logging.error(error)
-                logging.error(f"DB: Could not update playlist {playlist_name} in db")
-            try:
-                query = "UPDATE Subscription SET playlist_id = ? WHERE playlist_id = ?"
-                await bot.db.execute(query, (playlist_db_id, playlist_name))
-                await bot.db.commit()
-                logging.info(f"DB: Changed subscription for {playlist_name}: New id is {playlist_db_id}")
-            except DatabaseError as error:
-                logging.error(error)
-                logging.error(f"DB: Could not update subscription for {playlist_name} in db")
-            try:
-                query = "DELETE FROM Playlist WHERE Title = ?"
-                await bot.db.execute(query, (playlist_name,))
-                await bot.db.commit()
-                logging.info(f"DB: Deleted playlist {playlist_name}: New id is {playlist_db_id}")
-            except DatabaseError as error:
-                logging.error(error)
-                logging.error(f"DB: Could not update playlist {playlist_name} in db")
+# #swap_playlists из ссылок в ИмяПользователя:АйдиПлейлиста
+# @bot.message_handler(commands=['swap_playlists'])
+# async def swap_playlists(message):
+#     await reply_to_message(message, "Я работаю!")
+#     try:
+#         query = "SELECT * FROM Playlist"
+#         cursor = await bot.db.execute(query)
+#         rows = await cursor.fetchall()
+#         await cursor.close()
+#     except DatabaseError as error:
+#         logging.error(error)
+#         logging.error("DB: Could not read Playlists")
+#     # Для каждого плейлиста:
+#     for (playlist_name, last_added_track_db, snapshot) in rows:
+#         # Начитаем идентификатор для апишки
+#         if (playlist_name.find('music.yandex') != -1):
+#             playlist_id = playlist_name.split('/')[-1] 
+#             user_log = playlist_name.split('/')[-3]
+#             playlist_db_id = f"{user_log}:{playlist_id}"
+#             try:
+#                 query = "INSERT INTO Playlist (Title, LastAddedTrack, Snapshot) VALUES (?, ?, ?)"
+#                 await bot.db.execute(query, (playlist_db_id, last_added_track_db, snapshot))
+#                 await bot.db.commit()
+#                 logging.info(f"DB: Added playlist {playlist_name}: New id is {playlist_db_id}")
+#             except DatabaseError as error:
+#                 logging.error(error)
+#                 logging.error(f"DB: Could not update playlist {playlist_name} in db")
+#             try:
+#                 query = "UPDATE Subscription SET playlist_id = ? WHERE playlist_id = ?"
+#                 await bot.db.execute(query, (playlist_db_id, playlist_name))
+#                 await bot.db.commit()
+#                 logging.info(f"DB: Changed subscription for {playlist_name}: New id is {playlist_db_id}")
+#             except DatabaseError as error:
+#                 logging.error(error)
+#                 logging.error(f"DB: Could not update subscription for {playlist_name} in db")
+#             try:
+#                 query = "DELETE FROM Playlist WHERE Title = ?"
+#                 await bot.db.execute(query, (playlist_name,))
+#                 await bot.db.commit()
+#                 logging.info(f"DB: Deleted playlist {playlist_name}: New id is {playlist_db_id}")
+#             except DatabaseError as error:
+#                 logging.error(error)
+#                 logging.error(f"DB: Could not update playlist {playlist_name} in db")
             
 
 # Обработка '/delete_playlist', проверка на наличие ввода, удаление подписки.
@@ -249,7 +249,7 @@ async def show_playlists(message):
                 playlists_list.append(playlist)
             else:
                 #вот тут плохо
-                playlists_list.append(get_playlist_url(await playlist_from_db(playlist)))
+                playlists_list.append(get_url_from_playlist(await playlist_from_db(playlist)))
         await reply_to_message(message, "📌\n" + "\n📌\n".join(playlists_list))
 
 
